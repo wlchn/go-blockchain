@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"github.com/json-iterator/go"
 	log "github.com/sirupsen/logrus"
-	"io"
 	"net/http"
 	"os"
 	"strconv"
@@ -13,7 +12,7 @@ import (
 	"time"
 
 	"github.com/davecgh/go-spew/spew"
-	"github.com/gorilla/mux"
+	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
 )
 
@@ -52,54 +51,34 @@ func main() {
 		mutex.Unlock()
 	}()
 
-	log.Fatal(run())
+	run()
 }
 
-func run() error {
-	mux := makeMuxRouter()
+func run() {
+	gin.SetMode(gin.ReleaseMode)
+
+	r := gin.Default()
+
+	r.GET("/", handleGetBlockchain)
+	r.POST("/", handleWriteBlock)
+
 	httpPort := os.Getenv("PORT")
 	log.Println("HTTP Server Listening on port :", httpPort)
-	s := &http.Server{
-		Addr:           ":" + httpPort,
-		Handler:        mux,
-		ReadTimeout:    10 * time.Second,
-		WriteTimeout:   10 * time.Second,
-		MaxHeaderBytes: 1 << 20,
-	}
 
-	if err := s.ListenAndServe(); err != nil {
-		return err
-	}
-
-	return nil
+	r.Run(":" + httpPort)
 }
 
-func makeMuxRouter() http.Handler {
-	muxRouter := mux.NewRouter()
-	muxRouter.HandleFunc("/", handleGetBlockchain).Methods("GET")
-	muxRouter.HandleFunc("/", handleWriteBlock).Methods("POST")
-	return muxRouter
+func handleGetBlockchain(c *gin.Context) {
+	c.JSON(http.StatusOK, Blockchain)
 }
 
-func handleGetBlockchain(w http.ResponseWriter, r *http.Request) {
-	bytes, err := json.MarshalIndent(Blockchain, "", "  ")
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	io.WriteString(w, string(bytes))
-}
-
-func handleWriteBlock(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
+func handleWriteBlock(c *gin.Context) {
 	var msg Message
 
-	decoder := json.NewDecoder(r.Body)
-	if err := decoder.Decode(&msg); err != nil {
-		respondWithJSON(w, r, http.StatusBadRequest, r.Body)
+	if err := c.ShouldBindJSON(&msg); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	defer r.Body.Close()
 
 	prevBlock := Blockchain[len(Blockchain)-1]
 	mutex.Lock()
@@ -111,19 +90,7 @@ func handleWriteBlock(w http.ResponseWriter, r *http.Request) {
 		spew.Dump(Blockchain)
 	}
 
-	respondWithJSON(w, r, http.StatusCreated, newBlock)
-
-}
-
-func respondWithJSON(w http.ResponseWriter, r *http.Request, code int, payload interface{}) {
-	response, err := json.MarshalIndent(payload, "", "  ")
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte("HTTP 500: Internal Server Error"))
-		return
-	}
-	w.WriteHeader(code)
-	w.Write(response)
+	c.JSON(http.StatusOK, newBlock)
 }
 
 func isBlockValid(newBlock, oldBlock Block) bool {
