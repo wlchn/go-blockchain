@@ -3,8 +3,6 @@ package main
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"github.com/json-iterator/go"
-	log "github.com/sirupsen/logrus"
 	"net/http"
 	"os"
 	"strconv"
@@ -14,6 +12,7 @@ import (
 	"github.com/davecgh/go-spew/spew"
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
+	log "github.com/sirupsen/logrus"
 )
 
 var json = jsoniter.ConfigCompatibleWithStandardLibrary
